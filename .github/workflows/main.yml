@@ -1,0 +1,31 @@
+name: CFB Prediction Engine Run
+on:
+  schedule:
+    - cron: '0 22 * * *' # Runs daily at 10pm UTC
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+        
+      - name: Run Engine
+        run: python engine_zero.py
+        
+      - name: Commit State Upgrades
+        run: |
+          git config --global user.name 'CFB-Engine-Bot'
+          git config --global user.email 'bot@cfb-engine.ai'
+          git add profiles/*.json processed_games.log
+          git commit -m "Self-Correction: Updated Team Profiles [$(date)]" || echo "No changes"
+          git push
