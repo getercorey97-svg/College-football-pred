@@ -1,12 +1,12 @@
 name: 🤖 AI System Architect (Self-Correction)
 
 on:
-  workflow_dispatch: # Allows you to trigger a "Total Repair" manually
+  workflow_dispatch: 
   schedule:
-    - cron: '0 0 * * 1' # Automatically audits and fixes the code every Monday at midnight
+    - cron: '0 0 * * 1' 
 
 permissions:
-  contents: write # CRITICAL: Allows the AI to push fixed code back to your repo
+  contents: write 
 
 jobs:
   total-system-repair:
@@ -15,7 +15,7 @@ jobs:
       - name: 📂 Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history so the AI has full context
+          fetch-depth: 0 
 
       - name: 🐍 Setup Python 3.11
         uses: actions/setup-python@v5
@@ -36,10 +36,18 @@ jobs:
           git config --global user.name 'AI-System-Architect'
           git config --global user.email 'architect-bot@cfb.ai'
           
-          # Stage all changed python files and team profiles
-          git add *.py profiles/*.json data/state.json
+          # SAFER ADD LOGIC: 
+          # 1. Add all python files
+          git add *.py
           
-          # Only commit if changes were actually made
-          git commit -m "AI SELF-HEALING: Total System Audit & Mathematical Repair [$(date)]" || echo "No changes detected by AI Architect."
+          # 2. Add profiles and data ONLY if they exist, ignoring errors if they don't
+          git add profiles/*.json 2>/dev/null || echo "No profiles found yet."
+          git add data/state.json 2>/dev/null || echo "No state file found yet."
           
-          git push origin main
+          # 3. Check for changes and commit
+          if git diff --staged --quiet; then
+            echo "No changes detected by AI Architect."
+          else
+            git commit -m "AI SELF-HEALING: Total System Audit & Mathematical Repair [$(date)]"
+            git push origin main
+          fi
