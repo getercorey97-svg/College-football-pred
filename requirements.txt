@@ -1,4 +1,5 @@
 sportsdataverse
+pandas
 polars==0.20.10
 duckdb==0.10.0
 pandera==0.18.0
