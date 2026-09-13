@@ -2,51 +2,80 @@ import os
 import requests
 import json
 import glob
+import re
 
 class UniversalAIFixer:
     def __init__(self):
         self.api_key = os.environ.get("OPENROUTER_API_KEY")
         self.url = "https://openrouter.ai/api/v1/chat/completions"
-        # Discovery: Find every Python file in the directory
         self.files_to_fix = glob.glob("*.py")
-        # Remove the fixer itself from the list to prevent recursion loops
         if "ai_universal_fixer.py" in self.files_to_fix:
             self.files_to_fix.remove("ai_universal_fixer.py")
-            
-        self.models = ["openrouter/free"]
+        # Using a slightly higher-tier model for better JSON reliability
+        self.models = ["meta-llama/llama-3.1-70b-instruct", "openrouter/free"]
+
+    def robust_json_load(self, raw_str):
+        """
+        Heuristic repair for malformed AI JSON.
+        """
+        # 1. Strip markdown and conversational noise
+        content = re.sub(r'```json|```', '', raw_str).strip()
+        
+        # 2. Try standard load
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # 3. Handle missing closing brackets
+        # If the AI cut off, we try to append brackets until it works
+        temp_content = content
+        for _ in range(5): 
+            try:
+                return json.loads(temp_content)
+            except:
+                temp_content += "}"
+        
+        # 4. Final attempt: Extract using bracket counting
+        # This finds the start { and then finds the matching }
+        start_idx = content.find('{')
+        if start_idx == -1: return None
+        
+        count = 0
+        for i in range(start_idx, len(content)):
+            if content[i] == '{': count += 1
+            elif content[i] == '}': count -= 1
+            if count == 0:
+                try:
+                    return json.loads(content[start_idx:i+1])
+                except:
+                    break
+        return None
 
     def total_system_repair(self):
         if not self.api_key:
             print("❌ OPENROUTER_API_KEY missing.")
             return
 
-        print(f"🔍 AI is scanning all system files: {self.files_to_fix}")
-        
-        # Build the 'Project Memory'
         project_memory = ""
         for file_name in self.files_to_fix:
             with open(file_name, "r") as f:
                 project_memory += f"\nFILE: {file_name}\nCONTENT:\n{f.read()}\n"
 
         prompt = f"""
-        You are a Master System Architect and Elite Sports Quant. 
-        Perform a TOTAL REPAIR of the following College Football Prediction Engine. 
+        TASK: Perform a TOTAL REPAIR of these Python files for a CFB Prediction Engine.
+        You MUST return ONLY a valid JSON object. 
         
-        PROJECT FILES:
+        JSON FORMAT: 
+        {{ "filename.py": "FULL_CODE_HERE" }}
+        
+        CRITICAL RULES:
+        1. No conversational text.
+        2. Escape all internal quotes in the code (e.g. use \\" for quotes inside strings).
+        3. Ensure every {{ has a matching }}.
+        
+        PROJECT DATA:
         {project_memory}
-        
-        OBJECTIVE:
-        Fix EVERYTHING that is wrong. This includes:
-        1. MATHEMATICAL TRUTH: Implement the 'Dixon-Coles' adjustment for low scores (0, 1, 2, 3 points).
-        2. BIOLOGICAL TRUTH: Fully integrate 'The Geter Principle'. Calculate fatigue based on 'Biological Collision Fatigue' and the 'Travel Toll Index' (distance + time zones).
-        3. CORRELATION TRUTH: Use a Gaussian Copula to link QB passing yards and WR receiving yards.
-        4. PRODUCTION TRUTH: Optimize Polars and DuckDB queries for speed and zero-memory leaks.
-        5. SYNTAX TRUTH: Fix all Python errors, keyword argument mistakes (loc=, scale=), and API endpoint changes.
-
-        OUTPUT FORMAT:
-        Return ONLY a raw JSON object. Keys are filenames, values are the FULL corrected code. 
-        Example: {{"main.py": "code...", "engine_zero.py": "code..."}}
-        Do not include any conversational text or markdown blocks.
         """
 
         headers = {
@@ -58,14 +87,14 @@ class UniversalAIFixer:
         payload = {
             "model": self.models[0],
             "messages": [
-                {"role": "system", "content": "You are a self-correcting AI that optimizes complex mathematical and data engineering systems."},
+                {"role": "system", "content": "You are a machine that outputs raw JSON code blocks. You never talk, you only output JSON."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.0 # Strict logic, no creativity
+            "temperature": 0.0
         }
 
         try:
-            print("📡 Sending system to OpenRouter for total repair...")
+            print("📡 Sending system to OpenRouter...")
             res = requests.post(self.url, headers=headers, json=payload)
             response = res.json()
             
@@ -73,22 +102,23 @@ class UniversalAIFixer:
                 print(f"❌ API Error: {response['error'].get('message')}")
                 return
 
-            content = response['choices'][0]['message']['content'].strip()
+            raw_content = response['choices'][0]['message']['content']
             
-            # Robust JSON cleaning
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+            # Use our new Robust Parser
+            fixes = self.robust_json_load(raw_content)
 
-            fixes = json.loads(content)
-            
+            if not fixes:
+                print("❌ Failed to parse AI response even with heuristic repair.")
+                print(f"RAW PREVIEW: {raw_content[:300]}")
+                return
+
             for file_name, new_code in fixes.items():
-                with open(file_name, "w") as f:
-                    f.write(new_code)
-                print(f"🛠️ REPAIRED & OPTIMIZED: {file_name}")
+                if file_name in self.files_to_fix:
+                    with open(file_name, "w") as f:
+                        f.write(new_code)
+                    print(f"🛠️ REPAIRED: {file_name}")
             
-            print("✅ ALL SYSTEMS HEALED. The engine is now mathematically and logically perfect.")
+            print("✅ ALL SYSTEMS HEALED.")
 
         except Exception as e:
             print(f"❌ Total Repair Failed: {e}")
