@@ -1,129 +1,62 @@
-import os
-import json
-import duckdb
-import polars as pl
 import numpy as np
-from scipy import stats
-from datetime import datetime
-import sportsdataverse.cfb as cfb
+from scipy import stats, linalg
+import json
+import os
 
-# --- 1. STATE & MEMORY MANAGEMENT ---
-class StateMemory:
-    """Handles self-correction and prevents compounding stats."""
-    def __init__(self, profile_dir="profiles"):
-        self.profile_dir = profile_dir
-        self.log_file = "processed_games.log"
-        os.makedirs(profile_dir, exist_ok=True)
-        self.processed_games = self._load_log()
-
-    def _load_log(self):
-        if os.path.exists(self.log_file):
-            with open(self.log_file, "r") as f:
-                return set(f.read().splitlines())
-        return set()
-
-    def get_team_profile(self, team_id):
-        path = f"{self.profile_dir}/{team_id}.json"
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                return json.load(f)
-        return {"learning_rate": 0.05, "bias": 0.0, "fatigue_index": 1.0, "last_update": None}
-
-    def save_team_profile(self, team_id, profile):
-        with open(f"{self.profile_dir}/{team_id}.json", "w") as f:
-            json.dump(profile, f)
-
-# --- 2. THE MATHEMATICAL CORE ---
 class PredictionLogic:
     @staticmethod
-    def calculate_dixon_coles(home_exp, away_exp, rho=-0.1):
-        """Calculates score probabilities with low-score dependency adjustment."""
-        # Simplified for tonight's initialization
-        prob_matrix = np.outer(stats.poisson.pmf(range(50), home_exp), 
-                               stats.poisson.pmf(range(50), away_exp))
-        # Apply Tau adjustment for 0-0, 1-0, 0-1, 1-1 scores
-        prob_matrix[0,0] *= (1 - home_exp * away_exp * rho)
-        return prob_matrix
+    def nearest_psd(A):
+        """Repairs correlation matrices to ensure mathematical truth."""
+        B = (A + A.T) / 2
+        _, s, V = linalg.svd(B)
+        H = np.dot(V.T, np.dot(np.diag(s), V))
+        A2 = (B + H) / 2
+        A3 = (A2 + A2.T) / 2
+        if linalg.det(A3) > 0: return A3
+        I = np.eye(A.shape[0])
+        k = 1
+        while linalg.det(A3) <= 0:
+            A3 += I * np.spacing(linalg.norm(A)) * (10**k)
+            k += 1
+        return A3
 
     @staticmethod
-    def gaussian_copula_sim(marginals, correlation_matrix, n_sims=10000):
-        """Models joint player probabilities (QB + WR Correlation)."""
-        L = np.linalg.cholesky(correlation_matrix)
-        z = np.random.normal(0, 1, (len(marginals), n_sims))
-        correlated_z = np.dot(L, z)
-        u = stats.norm.cdf(correlated_z)
-        
-        sim_results = []
-        for i, dist in enumerate(marginals):
-            sim_results.append(np.percentile(dist, u[i] * 100))
-        return np.array(sim_results)
+    def dixon_coles_matrix(h_exp, a_exp, rho=-0.1):
+        """Bivariate Poisson with dependency adjustment."""
+        max_s = 60
+        h_p = stats.poisson.pmf(np.arange(max_s), h_exp)
+        a_p = stats.poisson.pmf(np.arange(max_s), a_exp)
+        m = np.outer(h_p, a_p)
+        tau = np.ones((max_s, max_s))
+        tau[0,0], tau[0,1], tau[1,0], tau[1,1] = 1-h_exp*a_exp*rho, 1+h_exp*rho, 1+a_exp*rho, 1-rho
+        return m * tau
 
-# --- 3. THE AUTONOMOUS ENGINE ---
 class CFBEngine:
-    def __init__(self):
-        self.memory = StateMemory()
+    def __init__(self, profile_dir="profiles"):
+        self.profile_dir = profile_dir
         self.logic = PredictionLogic()
-        self.con = duckdb.connect(database=':memory:')
 
-    def ingest_live_data(self):
-        """Retrieves tonight's games and rosters."""
-        print(f"[{datetime.now()}] Ingesting Live Telemetry...")
-        # Fetching tonight's schedule
-        try:
-            sched = cfb.espn_cfb_scoreboard(year=2024)
-            return sched
-        except Exception as e:
-            print(f"Data Ingestion Error: {e}")
-            return None
+    def get_profile(self, team):
+        path = f"{self.profile_dir}/{team}.json"
+        if os.path.exists(path):
+            with open(path, "r") as f: return json.load(f)
+        return {"bias": 0.0, "fatigue_index": 1.0, "baseline_exp": 24.5}
 
-    def predict_game(self, game_id, home_team, away_team):
-        """Generates the full prediction dossier."""
-        # 1. Retrieve Team Profiles
-        h_profile = self.memory.get_team_profile(home_team)
-        a_profile = self.memory.get_team_profile(away_team)
-
-        # 2. Mock Logic for tonight (to be replaced by Parquet Lake query)
-        # These are placeholders for the Dixon-Coles Lambda/Mu
-        home_lambda = 31.5 * h_profile['fatigue_index']
-        away_mu = 24.2 * a_profile['fatigue_index']
-
-        # 3. Generate Spread/Total
-        win_prob = np.sum(np.tril(self.logic.calculate_dixon_coles(home_lambda, away_mu), -1))
+    def predict_game(self, home, away):
+        h_p = self.get_profile(home)
+        a_p = self.get_profile(away)
         
-        # 4. Player Prop Simulation (QB Example)
-        # Using a 0.6 correlation between QB and WR1
-        corr = np.array([[1.0, 0.6], [0.6, 1.0]])
-        qb_dist = np.random.normal(250, 50, 1000) # Historical marginal
-        wr_dist = np.random.normal(80, 20, 1000)  # Historical marginal
+        # Geter Principle: Fatigue & Bias adjustment
+        h_exp = (h_p['baseline_exp'] + h_p['bias']) * h_p['fatigue_index']
+        a_exp = (a_p['baseline_exp'] + a_p['bias']) * a_p['fatigue_index']
         
-        props = self.logic.gaussian_copula_sim([qb_dist, wr_dist], corr)
+        matrix = self.logic.dixon_coles_matrix(h_exp, a_exp)
+        win_prob = np.sum(np.tril(matrix, -1))
+        over_prob = np.sum(np.triu(matrix + matrix.T, 45)) # Example Total 45.5
 
         return {
-            "game_id": game_id,
-            "matchup": f"{away_team} @ {home_team}",
-            "win_probability": round(float(win_prob), 4),
-            "proj_score": f"{round(home_lambda)}-{round(away_mu)}",
-            "player_props": {
-                "QB_Passing_Yards": round(np.mean(props[0]), 1),
-                "WR1_Receiving_Yards": round(np.mean(props[1]), 1)
-            }
+            "matchup": f"{away} @ {home}",
+            "home_win_prob": round(float(win_prob), 4),
+            "proj_score": f"{round(h_exp)}-{round(a_exp)}",
+            "total_over_prob": round(float(over_prob), 4)
         }
-
-    def run(self):
-        schedule = self.ingest_live_data()
-        if schedule is None: return
-
-        predictions = []
-        # Filter for tonight's games (Simplified)
-        for game in schedule.to_dicts():
-            pred = self.predict_game(game['game_id'], game['home_team_location'], game['away_team_location'])
-            predictions.append(pred)
-        
-        # Output Results
-        print(json.dumps(predictions, indent=2))
-        with open("predictions_tonight.json", "w") as f:
-            json.dump(predictions, f)
-
-if __name__ == "__main__":
-    engine = CFBEngine()
-    engine.run()
