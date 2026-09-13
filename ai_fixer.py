@@ -7,10 +7,16 @@ class AIFixer:
         self.api_key = os.environ.get("OPENROUTER_API_KEY")
         self.url = "https://openrouter.ai/api/v1/chat/completions"
         self.core_files = ["engine_zero.py", "seeder.py", "backtester.py", "main.py"]
+        # Updated for Sep 13, 2026: Using the autonomous free router and top-tier free coding models
+        self.models = [
+            "openrouter/free",                      # Safest: Automatically picks best available free model
+            "nvidia/nemotron-3-ultra-550b-a55b:free", # Best for multi-step reasoning & coding
+            "poolside/laguna-s-2.1:free"             # Flagship coding agent model
+        ]
 
     def run_system_audit(self):
-        if not self.api_key or self.api_key == "":
-            print("❌ Error: OPENROUTER_API_KEY is missing or empty in GitHub Secrets.")
+        if not self.api_key:
+            print("❌ Error: OPENROUTER_API_KEY is missing in GitHub Secrets.")
             return
 
         print("📂 Loading files for audit...")
@@ -32,7 +38,7 @@ class AIFixer:
         REQUIRED FIXES:
         1. Ensure 'Dixon-Coles' Poisson math correctly models low-score dependencies.
         2. Verify 'Gaussian Copula' correctly models correlations between QB and WR yards.
-        3. Apply 'The Geter Principle' to fatigue and travel variables.
+        3. Apply 'The Geter Principle' (Biological Fatigue) to fatigue and travel variables.
         4. Fix any syntax errors (e.g., ensuring stats functions use loc= and scale= keywords).
         
         OUTPUT INSTRUCTIONS:
@@ -46,46 +52,48 @@ class AIFixer:
             "Content-Type": "application/json"
         }
 
-        payload = {
-            "model": "meta-llama/llama-3.1-405b-instruct",
-            "messages": [{"role": "system", "content": "You are a self-healing coding agent that outputs raw JSON."},
-                         {"role": "user", "content": prompt}]
-        }
+        success = False
+        for model in self.models:
+            if success: break
+            try:
+                print(f"🤖 Requesting Audit from: {model}...")
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "system", "content": "You are a self-healing coding agent that outputs raw JSON."},
+                                 {"role": "user", "content": prompt}]
+                }
+                
+                res = requests.post(self.url, headers=headers, json=payload)
+                response = res.json()
+                
+                if 'error' in response:
+                    print(f"⚠️ Model {model} failed: {response['error'].get('message')}")
+                    continue
 
-        try:
-            print(f"🤖 Sending request to OpenRouter ({payload['model']})...")
-            res = requests.post(self.url, headers=headers, json=payload)
-            response = res.json()
-            
-            if 'error' in response:
-                print(f"❌ OpenRouter API Error: {response['error'].get('message')}")
-                return
+                if 'choices' not in response:
+                    continue
 
-            if 'choices' not in response:
-                print(f"❌ Unexpected API Response: {response}")
-                return
+                content = response['choices'][0]['message']['content'].strip()
+                
+                # Clean up markdown formatting
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0].strip()
 
-            content = response['choices'][0]['message']['content'].strip()
-            
-            # Clean up markdown if AI included it
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-
-            fixes = json.loads(content)
-            
-            for file_name, new_code in fixes.items():
-                if file_name in self.core_files:
-                    with open(file_name, "w") as f:
-                        f.write(new_code)
-                    print(f"🛠️ AI successfully fixed {file_name}")
+                fixes = json.loads(content)
+                
+                for file_name, new_code in fixes.items():
+                    if file_name in self.core_files:
+                        with open(file_name, "w") as f:
+                            f.write(new_code)
+                        print(f"🛠️ AI successfully fixed {file_name}")
+                
+                success = True
+                print(f"✅ System-wide audit complete using {model}.")
                     
-        except json.JSONDecodeError:
-            print("❌ Error: AI did not return valid JSON. Check the logs for the raw response.")
-            print(f"RAW CONTENT: {content[:500]}...")
-        except Exception as e:
-            print(f"❌ Audit failed: {str(e)}")
+            except Exception as e:
+                print(f"⚠️ Attempt with {model} failed: {str(e)}")
 
 if __name__ == "__main__":
     AIFixer().run_system_audit()
