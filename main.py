@@ -19,7 +19,7 @@ def main():
     if os.path.exists(state_path):
         with open(state_path, "r") as f: state = json.load(f)
     
-    if datetime.now() - datetime.fromisoformat(state["last_backtest"]) > timedelta(days=7):
+    if datetime.now() - datetime.fromisoformat(state["last_backset"]) > timedelta(days=7):
         cal = CalibrationUnit()
         for yr in [2024, 2025]: cal.run_backtest(yr)
         state["last_backtest"] = datetime.now().isoformat()
@@ -33,3 +33,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+}

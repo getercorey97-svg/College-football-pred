@@ -53,3 +53,4 @@ if __name__ == "__main__":
     s = DataLakeSeeder()
     s.seed_lake()
     s.initialize_profiles()
+}

@@ -44,15 +44,59 @@ class CFBEngine:
                 if not home or not away: continue
                 
                 h_p, a_p = self.get_profile(home), self.get_profile(away)
-                h_exp = h_p['baseline_exp'] + h_p['bias']
-                a_exp = a_p['baseline_exp'] + a_p['bias']
+                # Apply Geter Principle: biological fatigue adjustment
+                h_base = h_p['baseline_exp'] * h_p['fatigue_index']
+                a_base = a_p['baseline_exp'] * a_p['fatigue_index']
+                h_exp = h_base + h_p['bias']
+                a_exp = a_base + a_p['bias']
                 
+                # Dixon-Coles adjustment for low-score dependencies
+                rho = 0.001  # Small dependence parameter
+                max_goals = 20  # Truncate summation at 20 points
+                home_exp_dc = 0.0
+                away_exp_dc = 0.0
+                total_prob = 0.0
+                
+                for x in range(max_goals + 1):
+                    for y in range(max_goals + 1):
+                        # Poisson probabilities
+                        p_x = stats.poisson.pmf(x, h_exp)
+                        p_y = stats.poisson.pmf(y, a_exp)
+                        p_base = p_x * p_y
+                        
+                        # Dixon-Coles tau function
+                        if x == 0 and y == 0:
+                            tau = 1 - rho * h_exp * a_exp
+                        elif x == 0 and y == 1:
+                            tau = 1 + rho * h_exp
+                        elif x == 1 and y == 0:
+                            tau = 1 + rho * a_exp
+                        elif x == 1 and y == 1:
+                            tau = 1 - rho
+                        else:
+                            tau = 1.0
+                        
+                        p = p_base * tau
+                        home_exp_dc += x * p
+                        away_exp_dc += y * p
+                        total_prob += p
+                
+                # Normalize by total probability
+                if total_prob > 0:
+                    home_exp_dc /= total_prob
+                    away_exp_dc /= total_prob
+                else:
+                    # Fallback to independent Poisson
+                    home_exp_dc = h_exp
+                    away_exp_dc = a_exp
+                
+                projections = self.predict_props("Projected QB", "Projected WR1")
                 predictions.append({
                     "game": f"{away} @ {home}",
-                    "proj_score": f"{round(h_exp)}-{round(a_exp)}",
-                    "spread": round(float(a_exp - h_exp), 1),
-                    "total": round(float(h_exp + a_exp), 1),
-                    "props": self.predict_props("Projected QB", "Projected WR1")
+                    "proj_score": f"{round(home_exp_dc)}-{round(away_exp_dc)}",
+                    "spread": round(float(away_exp_dc - home_exp_dc), 1),
+                    "total": round(float(home_exp_dc + away_exp_dc), 1),
+                    "props": projections
                 })
             
             with open("predictions_tonight.json", "w") as f:
@@ -62,3 +106,4 @@ class CFBEngine:
 
 if __name__ == "__main__":
     CFBEngine().run_live_cycle()
+}
