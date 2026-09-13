@@ -13,7 +13,7 @@ class DataLakeSeeder:
         os.makedirs(profile_dir, exist_ok=True)
 
     def seed_lake(self):
-        print("🌊 Seeding Data Lake (2020-2025)...")
+        print("🌊 Seeding Data Lake (2020-2025)..."))
         for season in tqdm(range(2020, 2026)):
             path = f"{self.lake_dir}/season_{season}.parquet"
             if os.path.exists(path): continue
@@ -21,8 +21,8 @@ class DataLakeSeeder:
                 data = cfb.load_cfb_pbp(seasons=[season])
                 if data is None or (isinstance(data, pd.DataFrame) and data.empty):
                     continue
-                # Flatten schema to string to prevent Parquet type-mismatch crashes
-                df = pl.from_pandas(data.astype(str))
+                # Preserve numeric types for week and score calculations
+                df = pl.from_pandas(data)
                 df.write_parquet(path, compression="zstd")
                 print(f"✅ Saved Season {season}")
             except Exception as e:
@@ -46,11 +46,11 @@ class DataLakeSeeder:
                         "learning_rate": 0.05, 
                         "bias": 0.0, 
                         "fatigue_index": 1.0, 
-                        "baseline_exp": 24.5
+                        "baseline_exp": 24.5,
+                        "travel_penalty": 0.0
                     }, f)
 
 if __name__ == "__main__":
     s = DataLakeSeeder()
     s.seed_lake()
     s.initialize_profiles()
-}

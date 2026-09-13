@@ -13,7 +13,7 @@ class CFBEngine:
         path = f"{self.profile_dir}/{team}.json"
         if os.path.exists(path):
             with open(path, "r") as f: return json.load(f)
-        return {"bias": 0.0, "fatigue_index": 1.0, "baseline_exp": 24.5}
+        return {"bias": 0.0, "fatigue_index": 1.0, "baseline_exp": 24.5, "travel_penalty": 0.0}
 
     def predict_props(self, qb_name, wr_name):
         # Gaussian Copula Logic
@@ -44,9 +44,9 @@ class CFBEngine:
                 if not home or not away: continue
                 
                 h_p, a_p = self.get_profile(home), self.get_profile(away)
-                # Apply Geter Principle: biological fatigue adjustment
-                h_base = h_p['baseline_exp'] * h_p['fatigue_index']
-                a_base = a_p['baseline_exp'] * a_p['fatigue_index']
+                # Apply Geter Principle: biological fatigue and travel adjustment
+                h_base = h_p['baseline_exp'] * h_p['fatigue_index'] * (1 - h_p.get('travel_penalty', 0.0))
+                a_base = a_p['baseline_exp'] * a_p['fatigue_index'] * (1 - a_p.get('travel_penalty', 0.0))
                 h_exp = h_base + h_p['bias']
                 a_exp = a_base + a_p['bias']
                 
@@ -106,4 +106,3 @@ class CFBEngine:
 
 if __name__ == "__main__":
     CFBEngine().run_live_cycle()
-}
