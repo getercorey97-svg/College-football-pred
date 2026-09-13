@@ -9,17 +9,18 @@ class AIFixer:
         self.core_files = ["engine_zero.py", "seeder.py", "backtester.py", "main.py"]
 
     def run_system_audit(self):
-        if not self.api_key:
-            print("❌ No API Key.")
+        if not self.api_key or self.api_key == "":
+            print("❌ Error: OPENROUTER_API_KEY is missing or empty in GitHub Secrets.")
             return
 
-        # Load all files into a single context so the AI understands dependencies
+        print("📂 Loading files for audit...")
         context = ""
         for file_name in self.core_files:
-            with open(file_name, "r") as f:
-                context += f"\n--- START OF FILE: {file_name} ---\n"
-                context += f.read()
-                context += f"\n--- END OF FILE: {file_name} ---\n"
+            if os.path.exists(file_name):
+                with open(file_name, "r") as f:
+                    context += f"\n--- START OF FILE: {file_name} ---\n"
+                    context += f.read()
+                    context += f"\n--- END OF FILE: {file_name} ---\n"
 
         prompt = f"""
         You are the Lead Architect for a State-of-the-Art CFB Prediction Engine.
@@ -36,7 +37,7 @@ class AIFixer:
         
         OUTPUT INSTRUCTIONS:
         Return ONLY a JSON object where keys are the filenames and values are the full corrected code.
-        Format: {{"filename.py": "code content"}}
+        Do not include markdown formatting like ```json.
         """
 
         headers = {
@@ -47,23 +48,44 @@ class AIFixer:
 
         payload = {
             "model": "meta-llama/llama-3.1-405b-instruct",
-            "messages": [{"role": "system", "content": "You are a self-healing coding agent."},
-                         {"role": "user", "content": prompt}],
-            "response_format": { "type": "json_object" }
+            "messages": [{"role": "system", "content": "You are a self-healing coding agent that outputs raw JSON."},
+                         {"role": "user", "content": prompt}]
         }
 
         try:
-            response = requests.post(self.url, headers=headers, json=payload).json()
-            # Parse the AI's suggested fixes
-            fixes = json.loads(response['choices'][0]['message']['content'])
+            print(f"🤖 Sending request to OpenRouter ({payload['model']})...")
+            res = requests.post(self.url, headers=headers, json=payload)
+            response = res.json()
+            
+            if 'error' in response:
+                print(f"❌ OpenRouter API Error: {response['error'].get('message')}")
+                return
+
+            if 'choices' not in response:
+                print(f"❌ Unexpected API Response: {response}")
+                return
+
+            content = response['choices'][0]['message']['content'].strip()
+            
+            # Clean up markdown if AI included it
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            fixes = json.loads(content)
             
             for file_name, new_code in fixes.items():
                 if file_name in self.core_files:
                     with open(file_name, "w") as f:
                         f.write(new_code)
-                    print(f"🛠️ AI fixed {file_name}")
+                    print(f"🛠️ AI successfully fixed {file_name}")
+                    
+        except json.JSONDecodeError:
+            print("❌ Error: AI did not return valid JSON. Check the logs for the raw response.")
+            print(f"RAW CONTENT: {content[:500]}...")
         except Exception as e:
-            print(f"❌ Audit failed: {e}")
+            print(f"❌ Audit failed: {str(e)}")
 
 if __name__ == "__main__":
     AIFixer().run_system_audit()
