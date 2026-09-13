@@ -9,11 +9,12 @@ class DataLakeSeeder:
     def __init__(self, lake_dir="data/lake", profile_dir="profiles"):
         self.lake_dir = lake_dir
         self.profile_dir = profile_dir
-        os.makedirs(lake_dir, exist_ok=True)
-        os.makedirs(profile_dir, exist_ok=True)
+        # Ensure directories exist
+        os.makedirs(self.lake_dir, exist_ok=True)
+        os.makedirs(self.profile_dir, exist_ok=True)
 
     def seed_lake(self):
-        print("🌊 Seeding Data Lake (Focusing on 2020-2025 for Speed)...")
+        print("🌊 Seeding Data Lake (2020-2025)...")
         for season in tqdm(range(2020, 2026)):
             path = f"{self.lake_dir}/season_{season}.parquet"
             if os.path.exists(path): continue
@@ -21,23 +22,35 @@ class DataLakeSeeder:
                 data = cfb.load_cfb_pbp(seasons=[season])
                 if data is None or (isinstance(data, pd.DataFrame) and data.empty):
                     continue
-                # Flatten schema: Cast all to string to prevent schema mismatch
+                # Cast all to string to prevent Parquet schema mismatch crashes
                 df = pl.from_pandas(data.astype(str))
                 df.write_parquet(path, compression="zstd")
-                print(f"✅ Saved {season}")
+                print(f"✅ Saved Season {season}")
             except Exception as e:
-                print(f"⚠️ Season {season} skip: {e}")
+                print(f"⚠️ Skipping {season}: {e}")
 
     def initialize_profiles(self):
+        print("👤 Initializing Team Profiles...")
         files = [f for f in os.listdir(self.lake_dir) if f.endswith(".parquet")]
-        if not files: return
-        df = pl.read_parquet(f"{self.lake_dir}/{files[-1]}")
-        teams = df["home_team_location"].unique().to_list()
+        if not files: 
+            print("❌ No lake files found. Profile init failed.")
+            return
+        
+        df = pl.read_parquet(f"{self.lake_dir}/{sorted(files)[-1]}")
+        team_col = "home_team_location" if "home_team_location" in df.columns else "home_team"
+        teams = df[team_col].unique().to_list()
+        
         for team in teams:
             path = f"{self.profile_dir}/{team}.json"
             if not os.path.exists(path):
                 with open(path, "w") as f:
-                    json.dump({"team": team, "learning_rate": 0.05, "bias": 0.0, "fatigue_index": 1.0, "baseline_exp": 24.5}, f)
+                    json.dump({
+                        "team": team, 
+                        "learning_rate": 0.05, 
+                        "bias": 0.0, 
+                        "fatigue_index": 1.0, 
+                        "baseline_exp": 24.5
+                    }, f)
 
 if __name__ == "__main__":
     s = DataLakeSeeder()
