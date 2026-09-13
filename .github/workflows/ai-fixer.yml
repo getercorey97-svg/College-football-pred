@@ -1,36 +1,45 @@
-name: 🤖 AI Code Auditor & Fixer
+name: 🤖 AI System Architect (Self-Correction)
+
 on:
-  workflow_dispatch: # Allows you to run it manually
+  workflow_dispatch: # Allows you to trigger a "Total Repair" manually
   schedule:
-    - cron: '0 0 * * 1' # Runs every Monday automatically
+    - cron: '0 0 * * 1' # Automatically audits and fixes the code every Monday at midnight
 
 permissions:
-  contents: write
+  contents: write # CRITICAL: Allows the AI to push fixed code back to your repo
 
 jobs:
-  audit-and-fix:
+  total-system-repair:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: 📂 Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history so the AI has full context
 
-      - name: Setup Python
+      - name: 🐍 Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install
-        run: pip install requests openai
+      - name: 📦 Install Repair Dependencies
+        run: |
+          pip install requests openai polars numpy scipy
 
-      - name: Run AI Fixer
-        run: python ai_fixer.py
+      - name: 🛠️ Run Universal AI Fixer
+        run: python ai_universal_fixer.py
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      - name: Commit AI Improvements
+      - name: 🚀 Commit & Push Healed Code
         run: |
-          git config --global user.name 'AI-Lead-Engineer'
-          git config --global user.email 'ai-fixer@cfb.ai'
-          git add *.py
-          git commit -m "AI Self-Correction: Applied System-Wide Logic Fixes [$(date)]" || echo "No changes"
-          git push
+          git config --global user.name 'AI-System-Architect'
+          git config --global user.email 'architect-bot@cfb.ai'
+          
+          # Stage all changed python files and team profiles
+          git add *.py profiles/*.json data/state.json
+          
+          # Only commit if changes were actually made
+          git commit -m "AI SELF-HEALING: Total System Audit & Mathematical Repair [$(date)]" || echo "No changes detected by AI Architect."
+          
+          git push origin main
