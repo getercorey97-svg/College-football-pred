@@ -5,49 +5,30 @@ from seeder import DataLakeSeeder
 from backtester import CalibrationUnit
 from engine_zero import CFBEngine
 
-STATE_FILE = "data/state.json"
-
-def get_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f: 
-            try: return json.load(f)
-            except: return {"last_backtest": None, "initialized": False}
-    return {"last_backtest": None, "initialized": False}
-
 def main():
     os.makedirs("data", exist_ok=True)
-    state = get_state()
-    current_time = datetime.now()
-
-    seeder = DataLakeSeeder()
+    os.makedirs("profiles", exist_ok=True)
     
-    # 1. Seed Lake if profiles are missing
-    if not os.listdir("profiles"):
-        print("📥 Initial Run: Seeding Data...")
-        seeder.seed_lake()
-        seeder.initialize_profiles()
+    # 1. Seeding
+    s = DataLakeSeeder()
+    s.seed_lake()
+    s.initialize_profiles()
 
-    # 2. Calibration Gate (Weekly)
-    needs_cal = not state.get("initialized", False)
-    if state.get("last_backtest"):
-        last_run = datetime.fromisoformat(state["last_backtest"])
-        if current_time - last_run > timedelta(days=7):
-            needs_cal = True
-
-    if needs_cal:
-        print("📉 Running Calibration...")
+    # 2. Calibration (Weekly Gate)
+    state_path = "data/state.json"
+    state = {"last_backtest": "2000-01-01"}
+    if os.path.exists(state_path):
+        with open(state_path, "r") as f: state = json.load(f)
+    
+    last_run = datetime.fromisoformat(state["last_backtest"])
+    if datetime.now() - last_run > timedelta(days=7):
+        print("Running Weekly Calibration...")
         cal = CalibrationUnit()
-        # Try to backtest whatever seasons we actually have
-        for s in [2023, 2024]:
-            if os.path.exists(f"data/lake/season_{s}.parquet"):
-                cal.run_backtest(s)
-        
-        state["last_backtest"] = current_time.isoformat()
-        state["initialized"] = True
-        with open(STATE_FILE, "w") as f: json.dump(state, f)
+        for yr in [2023, 2024]: cal.run_backtest(yr)
+        state["last_backtest"] = datetime.now().isoformat()
+        with open(state_path, "w") as f: json.dump(state, f)
 
-    # 3. Predict Tonight
-    print("🔮 Running Prediction Engine...")
+    # 3. Prediction
     engine = CFBEngine()
     engine.run_live_cycle()
 
