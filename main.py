@@ -9,7 +9,9 @@ STATE_FILE = "data/state.json"
 
 def get_state():
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f: return json.load(f)
+        with open(STATE_FILE, "r") as f: 
+            try: return json.load(f)
+            except: return {"last_backtest": None, "initialized": False}
     return {"last_backtest": None, "initialized": False}
 
 def main():
@@ -17,32 +19,37 @@ def main():
     state = get_state()
     current_time = datetime.now()
 
-    # 1. Seed Lake
     seeder = DataLakeSeeder()
-    if not os.path.exists("data/lake/season_2024.parquet"):
+    
+    # 1. Seed Lake if profiles are missing
+    if not os.listdir("profiles"):
+        print("📥 Initial Run: Seeding Data...")
         seeder.seed_lake()
         seeder.initialize_profiles()
 
     # 2. Calibration Gate (Weekly)
-    needs_cal = not state["initialized"]
-    if state["last_backtest"]:
-        if current_time - datetime.fromisoformat(state["last_backtest"]) > timedelta(days=7):
+    needs_cal = not state.get("initialized", False)
+    if state.get("last_backtest"):
+        last_run = datetime.fromisoformat(state["last_backtest"])
+        if current_time - last_run > timedelta(days=7):
             needs_cal = True
 
     if needs_cal:
+        print("📉 Running Calibration...")
         cal = CalibrationUnit()
-        cal.run_backtest(2024)
-        cal.run_backtest(2025)
+        # Try to backtest whatever seasons we actually have
+        for s in [2023, 2024]:
+            if os.path.exists(f"data/lake/season_{s}.parquet"):
+                cal.run_backtest(s)
+        
         state["last_backtest"] = current_time.isoformat()
         state["initialized"] = True
         with open(STATE_FILE, "w") as f: json.dump(state, f)
 
     # 3. Predict Tonight
+    print("🔮 Running Prediction Engine...")
     engine = CFBEngine()
-    # Mocking tonight's schedule for demonstration
-    # In production, this pulls from sportsdataverse.cfb.espn_cfb_scoreboard()
-    print("🔮 Predictions Generated. Saving to predictions_tonight.json...")
-    # engine.run_live_cycle()
+    engine.run_live_cycle()
 
 if __name__ == "__main__":
     main()
