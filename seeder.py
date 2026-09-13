@@ -1,80 +1,54 @@
 import os
-import pandas as pd
 import polars as pl
 import sportsdataverse.cfb as cfb
 from tqdm import tqdm
-
-# --- CONFIGURATION ---
-DATA_LAKE_DIR = "data/lake"
-SEASONS = range(2004, 2025) # 20 years of fact
-os.makedirs(DATA_LAKE_DIR, exist_ok=True)
+import json
 
 class DataLakeSeeder:
-    def __init__(self):
-        self.stadium_coords = {} # Placeholder for TTI calculation
-
-    def calculate_travel_toll(self, team, opponent, week, season):
-        """
-        Implementation of the Geter Principle: Travel Toll Index.
-        Deduces fatigue based on distance and timezone shifts.
-        """
-        # Logic: If distance > 500 miles or TZ shift > 1, apply penalty
-        # This is a proxy until full stadium lat/long mapping is integrated
-        return 1.0 # Base multiplier
-
-    def calculate_collision_fatigue(self, pbp_df):
-        """
-        Geter Principle: Biological Collision Fatigue (BCF).
-        Counts high-impact events per player/team.
-        """
-        # We define a 'collision' as a sack, tackle, or rush attempt
-        fatigue = pbp_df.group_by("possession_team").agg([
-            (pl.col("play_type").is_in(["rush", "sack", "tackle"])).sum().alias("collision_count")
-        ])
-        return fatigue
+    def __init__(self, lake_dir="data/lake", profile_dir="profiles"):
+        self.lake_dir = lake_dir
+        self.profile_dir = profile_dir
+        os.makedirs(lake_dir, exist_ok=True)
+        os.makedirs(profile_dir, exist_ok=True)
 
     def seed_lake(self):
-        print("Starting Deep Historical Seed (2004-2024)...")
-        
-        for season in tqdm(SEASONS):
-            file_path = f"{DATA_LAKE_DIR}/season_{season}.parquet"
-            
-            if os.path.exists(file_path):
-                print(f"Season {season} already seeded. Skipping.")
-                continue
-
+        print("🌊 Seeding Historical Data Lake (2004-2025)...")
+        for season in tqdm(range(2004, 2026)):
+            path = f"{self.lake_dir}/season_{season}.parquet"
+            if os.path.exists(path): continue
             try:
-                # 1. Load Raw Telemetry
-                raw_data = cfb.load_cfb_pbp(seasons=[season])
-                if raw_data.empty:
-                    continue
-                
-                # 2. Convert to Polars for high-speed processing
-                df = pl.from_pandas(raw_data)
-
-                # 3. Apply Geter Principle Feature Engineering
-                # We calculate rolling collision fatigue over the season
-                df = df.with_columns([
-                    pl.col("epa").fill_null(0).alias("epa_cleaned"),
-                    (pl.col("wpa").fill_null(0)).alias("wpa_cleaned")
-                ])
-
-                # 4. Save as Partitioned Parquet (ZSTD for max compression)
-                df.write_parquet(
-                    file_path,
-                    compression="zstd",
-                    use_pyarrow=True
-                )
-                
+                data = cfb.load_cfb_pbp(seasons=[season])
+                if data.empty: continue
+                df = pl.from_pandas(data)
+                # Apply Volume Compression for 2024+ Rules
+                if season >= 2024:
+                    df = df.with_columns(pl.lit(0.92).alias("clock_rule_adj"))
+                else:
+                    df = df.with_columns(pl.lit(1.0).alias("clock_rule_adj"))
+                df.write_parquet(path, compression="zstd")
             except Exception as e:
-                print(f"Error seeding season {season}: {e}")
+                print(f"Error seeding {season}: {e}")
 
-    def initialize_team_profiles(self):
-        """Scans the lake to create the initial 134 weights.json files."""
-        print("Initializing 134 Team Profiles based on historical truth...")
-        # Logic to extract baseline EPA/Success Rate per team and save to /profiles
-        pass
+    def initialize_profiles(self):
+        print("👤 Initializing 134 Team Profiles...")
+        # Load 2024 data to get list of active FBS teams
+        df = pl.read_parquet(f"{self.lake_dir}/season_2024.parquet")
+        teams = df["home_team_location"].unique().to_list()
+        for team in teams:
+            path = f"{self.profile_dir}/{team}.json"
+            if not os.path.exists(path):
+                profile = {
+                    "team": team,
+                    "learning_rate": 0.05,
+                    "bias": 0.0,
+                    "fatigue_index": 1.0,
+                    "baseline_exp": 24.5,
+                    "last_calibration": None
+                }
+                with open(path, "w") as f:
+                    json.dump(profile, f)
 
 if __name__ == "__main__":
     seeder = DataLakeSeeder()
     seeder.seed_lake()
+    seeder.initialize_profiles()
