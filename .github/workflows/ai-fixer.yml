@@ -1,0 +1,36 @@
+name: 🤖 AI Code Auditor & Fixer
+on:
+  workflow_dispatch: # Allows you to run it manually
+  schedule:
+    - cron: '0 0 * * 1' # Runs every Monday automatically
+
+permissions:
+  contents: write
+
+jobs:
+  audit-and-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: pip install requests openai
+
+      - name: Run AI Fixer
+        run: python ai_fixer.py
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Commit AI Improvements
+        run: |
+          git config --global user.name 'AI-Lead-Engineer'
+          git config --global user.email 'ai-fixer@cfb.ai'
+          git add *.py
+          git commit -m "AI Self-Correction: Applied System-Wide Logic Fixes [$(date)]" || echo "No changes"
+          git push
