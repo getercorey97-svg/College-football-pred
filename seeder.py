@@ -9,9 +9,8 @@ class DataLakeSeeder:
     def __init__(self, lake_dir="data/lake", profile_dir="profiles"):
         self.lake_dir = lake_dir
         self.profile_dir = profile_dir
-        # Ensure directories exist
-        os.makedirs(self.lake_dir, exist_ok=True)
-        os.makedirs(self.profile_dir, exist_ok=True)
+        os.makedirs(lake_dir, exist_ok=True)
+        os.makedirs(profile_dir, exist_ok=True)
 
     def seed_lake(self):
         print("🌊 Seeding Data Lake (2020-2025)...")
@@ -22,7 +21,7 @@ class DataLakeSeeder:
                 data = cfb.load_cfb_pbp(seasons=[season])
                 if data is None or (isinstance(data, pd.DataFrame) and data.empty):
                     continue
-                # Cast all to string to prevent Parquet schema mismatch crashes
+                # Flatten schema to string to prevent Parquet type-mismatch crashes
                 df = pl.from_pandas(data.astype(str))
                 df.write_parquet(path, compression="zstd")
                 print(f"✅ Saved Season {season}")
@@ -32,9 +31,7 @@ class DataLakeSeeder:
     def initialize_profiles(self):
         print("👤 Initializing Team Profiles...")
         files = [f for f in os.listdir(self.lake_dir) if f.endswith(".parquet")]
-        if not files: 
-            print("❌ No lake files found. Profile init failed.")
-            return
+        if not files: return
         
         df = pl.read_parquet(f"{self.lake_dir}/{sorted(files)[-1]}")
         team_col = "home_team_location" if "home_team_location" in df.columns else "home_team"
