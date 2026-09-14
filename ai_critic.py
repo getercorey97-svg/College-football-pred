@@ -9,7 +9,7 @@ class AICritic:
 
     def analyze_and_correct(self):
         if not self.api_key: return
-        print("🤖 OpenRouter AI is auditing the engine...")
+        print("\u001b[34m\u2705\u001b[0m OpenRouter AI is auditing the engine...")
         
         with open("predictions_tonight.json", "r") as f:
             data = f.read()
@@ -20,20 +20,20 @@ class AICritic:
         Format: JSON only. Example: {{"team_name": "Michigan", "new_bias": 1.5}}
         """
 
-        headers = {
+        headers = {{
             "Authorization": f"Bearer {self.api_key}",
             "HTTP-Referer": "https://github.com/cfb-engine",
             "Content-Type": "application/json"
-        }
+        }}
 
-        payload = {
+        payload = {{
             "model": "meta-llama/llama-3.1-70b-instruct",
             "messages": [{"role": "user", "content": prompt}]
-        }
+        }}
 
         try:
             response = requests.post(self.url, headers=headers, json=payload).json()
             # Note: We parse the AI response to adjust the profiles/ JSONs
-            print("✅ AI Audit complete.")
+            print("\u001b[32m\u2705\u001b[0m AI Audit complete.")
         except Exception as e:
             print(f"AI Error: {e}")

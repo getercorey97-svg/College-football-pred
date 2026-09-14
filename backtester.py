@@ -9,9 +9,7 @@ class CalibrationUnit:
     def run_backtest(self, season):
         path = f"data/lake/season_{season}.parquet"
         if not os.path.exists(path): return
-        df = pl.read_parquet(path)
-        
-        for week in df["week"].unique().sort():
+        df = pl.read_parquet(path)\n\n        for week in df["week"].unique().sort():
             week_games = df.filter(pl.col("week") == week)
             for game in week_games.to_dicts():
                 home = game.get('home_team_location')

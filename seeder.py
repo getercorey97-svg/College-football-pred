@@ -13,7 +13,7 @@ class DataLakeSeeder:
         os.makedirs(profile_dir, exist_ok=True)
 
     def seed_lake(self):
-        print("🌊 Seeding Data Lake (2020-2025)..."))
+        print("\u001b[34m\u1f30a\u001b[0m Seeding Data Lake (2020-2025)...")
         for season in tqdm(range(2020, 2026)):
             path = f"{self.lake_dir}/season_{season}.parquet"
             if os.path.exists(path): continue
@@ -24,33 +24,23 @@ class DataLakeSeeder:
                 # Preserve numeric types for week and score calculations
                 df = pl.from_pandas(data)
                 df.write_parquet(path, compression="zstd")
-                print(f"✅ Saved Season {season}")
+                print(f"\u001b[32m\u2705\u001b[0m Saved Season {season}")
             except Exception as e:
-                print(f"⚠️ Skipping {season}: {e}")
+                print(f"\u001b[33m\u26a0\u001b[0m Skipping {season}: {e}")
 
     def initialize_profiles(self):
-        print("👤 Initializing Team Profiles...")
+        print("\u001b[34m\u1f464\u001b[0m Initializing Team Profiles...")
         files = [f for f in os.listdir(self.lake_dir) if f.endswith(".parquet")]
-        if not files: return
-        
-        df = pl.read_parquet(f"{self.lake_dir}/{sorted(files)[-1]}")
+        if not files: return\n\n        df = pl.read_parquet(f"{self.lake_dir}/{sorted(files)[-1]}")
         team_col = "home_team_location" if "home_team_location" in df.columns else "home_team"
-        teams = df[team_col].unique().to_list()
-        
-        for team in teams:
+        teams = df[team_col].unique().to_list()\n\n        for team in teams:
             path = f"{self.profile_dir}/{team}.json"
             if not os.path.exists(path):
                 with open(path, "w") as f:
-                    json.dump({
-                        "team": team, 
-                        "learning_rate": 0.05, 
-                        "bias": 0.0, 
-                        "fatigue_index": 1.0, 
-                        "baseline_exp": 24.5,
+                    json.dump({{
+                        "team": team, \n                        "learning_rate": 0.05, \n                        "bias": 0.0, \n                        "fatigue_index": 1.0, \n                        "baseline_exp": 24.5,
                         "travel_penalty": 0.0
-                    }, f)
-
-if __name__ == "__main__":
+                    }}, f)\n\nif __name__ == "__main__":
     s = DataLakeSeeder()
     s.seed_lake()
     s.initialize_profiles()
